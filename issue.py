@@ -16,11 +16,12 @@ def get_alias(name):
     # don't have to have a pattern established in advance.
     # Strip off the asterix because they do.
     alias = '_acme-challenge.' + (name[2:] if name.startswith('*.') else name)
-    res = subprocess.check_output([
-        'dig',
-        '+short',
-        alias,
-    ]).decode()
+
+    cmd = ['dig']
+    if args.nameserver:
+        cmd.append('@' + args.nameserver)
+    cmd.extend(('+short', alias))
+    res = subprocess.check_output(cmd).decode()
     for line in res.splitlines():
         line = line.strip()
         if line.endswith('.'):
@@ -28,7 +29,7 @@ def get_alias(name):
             break
     return name, alias    
 
-def get_primary(name):
+def get_nameserver(name):
 
     # Lookup the authority so we know what server/key to use.
     soa = subprocess.check_output([
@@ -54,8 +55,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', action='store_true')
 parser.add_argument('-n', '--dry-run', action='store_true')
 parser.add_argument('-d', '--debug', action='store_true')
-parser.add_argument('-x', '--extra')
+parser.add_argument('-x', '--extra',
+    help="Extra arguments for acme.sh.")
 parser.add_argument('-s', '--staging', action='store_true')
+parser.add_argument('-N', '--nameserver',
+    help="Force the nameserver for resolving aliases AND updating.")
 parser.add_argument('domains', nargs='+')
 args = parser.parse_args()
 
@@ -74,7 +78,7 @@ executor = futures.ThreadPoolExecutor(len(args.domains))
 for i, (name, alias) in enumerate(executor.map(get_alias, args.domains)):
     print('#    {} -> {}'.format(name, alias))
     if not i:
-        primary = get_primary(alias)
+        nameserver = args.nameserver or get_nameserver(alias)
     cmd.extend((
         '-d', name,
         '--domain-alias', alias,
@@ -82,9 +86,9 @@ for i, (name, alias) in enumerate(executor.map(get_alias, args.domains)):
 
 
 env = os.environ.copy()
-env['NSUPDATE_SERVER'] = primary
-env['NSUPDATE_KEY'] = keypath = os.path.join(os.path.expanduser('~/nsupdate'), primary + '.key')
-print("$ NSUPDATE_SERVER={}".format(primary))
+env['NSUPDATE_SERVER'] = nameserver
+env['NSUPDATE_KEY'] = keypath = os.path.join(os.path.expanduser('~/nsupdate'), nameserver + '.key')
+print("$ NSUPDATE_SERVER={}".format(nameserver))
 print("$ NSUPDATE_KEY={}".format(keypath))
 
 
