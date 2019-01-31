@@ -18,8 +18,9 @@ def get_alias(name):
     alias = '_acme-challenge.' + (name[2:] if name.startswith('*.') else name)
 
     cmd = ['dig']
-    if args.nameserver:
-        cmd.append('@' + args.nameserver)
+    nameserver = args.alias_nameserver or args.nameserver
+    if nameserver:
+        cmd.append('@' + nameserver)
     cmd.extend(('+short', alias))
     res = subprocess.check_output(cmd).decode()
     for line in res.splitlines():
@@ -59,7 +60,9 @@ parser.add_argument('-x', '--extra',
     help="Extra arguments for acme.sh.")
 parser.add_argument('-s', '--staging', action='store_true')
 parser.add_argument('-N', '--nameserver',
-    help="Force the nameserver for resolving aliases AND updating.")
+    help="Force the nameserver for updating and alias resolution.")
+parser.add_argument('-A', '--alias-nameserver',
+    help="Force the alias resolution nameserver; takes over from --nameserver which is then only for updating.")
 parser.add_argument('domains', nargs='+')
 args = parser.parse_args()
 
