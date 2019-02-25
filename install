@@ -8,17 +8,25 @@ import os
 import shlex
 import sys
 
+if not os.getuid():
+    print("Must not run as root.")
+    exit(1)
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-v', '--verbose', action='store_true')
 parser.add_argument('-n', '--dry-run', action='store_true')
 parser.add_argument('-d', '--debug', action='store_true')
 
-parser.add_argument('-C', '--root', default=os.path.expanduser('~letsencrypt/tls'))
-parser.add_argument('-N', '--name', help="Basename of installed files.")
+parser.add_argument('-C', '--root', default=os.path.expanduser('~letsencrypt/tls'),
+    help="Where to store the certs? Defaults to ~/tls")
+parser.add_argument('-N', '--name',
+    help="Basename of installed files; defaults to the domain name.")
 
-parser.add_argument('-r', '--systemctl-reload', action='append', default=[])
-parser.add_argument('-R', '--reload', action='append', default=[], help="Manual reload commands; don't forget to sudo.")
+parser.add_argument('-r', '--systemctl-reload', metavar='SERVICE', action='append', default=[],
+    help="Issue a `systemctl reload SERVICE`; can be used multiple times.")
+parser.add_argument('-R', '--reload', action='append', default=[],
+    help="Manual reload commands; don't forget to sudo here.")
 
 parser.add_argument('-x', '--extra', help="Extra arguments for acme.sh --installcert.")
 
