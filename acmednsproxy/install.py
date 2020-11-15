@@ -71,8 +71,11 @@ def main():
         cmd.extend(shlex.split(args.extra))
 
     print('$', ' '.join(cmd))
+    
+    env = os.environ.copy()
+    env['LE_WORKING_DIR'] = paths.acme_data
 
     if not args.dry_run:
-        code = subprocess.call(cmd)
+        code = subprocess.call(cmd, env=env)
         exit(code)
 
