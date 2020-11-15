@@ -1,5 +1,31 @@
 
-Use `issue` and `install` commands to simplify the DNS-based letsencrypt process.
+# acme-dns-proxy
+
+## Install
+
+```
+
+useradd --system -m -d /var/lib/letsencrypt -s /bin/bash letsencrypt
+su letsencrypt
+cd
+
+mkdir dev
+git clone git@github.com:mikeboers/acme-dns-proxy dev/acme-dns-proxy
+cd dev/acme-dns-proxy
+git submodule update --init
+cd ../..
+
+python3 -m venv venv
+. venv/bin/activate
+pip install -e dev/acme-dns-proxy
+
+echo 'source ~/venv/bin/activate' >> ~/.bashrc
+
+```
+
+## Use
+
+Use `acme-dns-issue` and `acme-dns-install` commands to simplify the DNS-based letsencrypt process.
 
 We assume that:
 
@@ -12,7 +38,7 @@ We assume that:
 Basic use:
 
 ```
-./issue example.com foo.example.com *.bar.example.com
-./install -r nginx example.com
+acme-dns-issue example.com foo.example.com *.bar.example.com
+acme-dns-install -r nginx example.com
 ```
 

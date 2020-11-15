@@ -10,21 +10,18 @@ import shlex
 import subprocess
 import sys
 
-
-if not os.getuid():
-    print("Must not run as root.")
-    exit(1)
+from . import paths
 
 
-def get_alias(name):
+def get_alias(name, nameserver=None):
     # Attempt to resolve the challenge URL so we
     # don't have to have a pattern established in advance.
     # Strip off the asterix because they do.
     alias = '_acme-challenge.' + (name[2:] if name.startswith('*.') else name)
 
     cmd = ['dig']
-    if args.alias_nameserver:
-        cmd.append('@' + args.alias_nameserver)
+    if nameserver:
+        cmd.append('@' + nameserver)
     cmd.extend(('+short', alias))
     res = subprocess.check_output(cmd).decode()
     for line in res.splitlines():
@@ -34,20 +31,23 @@ def get_alias(name):
             break
     return name, alias    
 
-def get_nameserver(name):
+
+def get_nameserver(name, nameserver=None):
 
     # Lookup the authority so we know what server/key to use.
     # We do this from 1.1.1.1 because on a few of our servers the
     # local dnsmasq is getting in the way.
-    soa = subprocess.check_output([
-        'dig',
-        '@' + args.soa_nameserver,
+    cmd = ['dig']
+    if nameserver:
+        cmd.append('@' + nameserver)
+    cmd.extend((
         '+noall',
         '+authority',
         '+answer',
         name,
         'soa',
-    ]).decode()
+    ))
+    soa = subprocess.check_output(cmd).decode()
     m = re.search(r'''
         ^
         (\S+)\s+ # The name.
@@ -104,54 +104,66 @@ parser.add_argument('-C', '--challenge-nameserver',
 
 parser.add_argument('domains', nargs='+')
 
-args = parser.parse_args()
+
+def main():
 
 
-cmd = [
-    os.path.expanduser('~letsencrypt/.acme.sh/acme.sh'),
-    '--issue',
-    '--dns', 'dns_nsupdate',
-    '--dnssleep', '5' if any('*' in x for x in args.domains) else '0',
-]
+    if not os.getuid():
+        print("Must not run as root.")
+        exit(1)
 
-if not args.alias_nameserver:
-    args.alias_nameserver = get_nameserver(args.domains[0])
+    args = parser.parse_args()
 
-# Control flow is a little convoluted for speed.
-print('# Resolving aliases via', args.alias_nameserver)
-executor = futures.ThreadPoolExecutor(len(args.domains))
-for i, (name, alias) in enumerate(executor.map(get_alias, args.domains)):
-    print('#    {} -> {}'.format(name, alias))
-    if not i:
-        challenge_nameserver = args.challenge_nameserver or get_nameserver(alias)
-    cmd.extend((
-        '-d', name,
-        '--domain-alias', alias,
-    ))
+    cmd = [
+        paths.acme_exec,
+        '--issue',
+        '--dns', 'dns_nsupdate',
+        '--dnssleep', '5' if any('*' in x for x in args.domains) else '0',
+    ]
+
+    if not args.alias_nameserver:
+        args.alias_nameserver = get_nameserver(args.domains[0], args.soa_nameserver)
+
+    # Control flow is a little convoluted for speed.
+    print('# Resolving aliases via', args.alias_nameserver)
+    executor = futures.ThreadPoolExecutor(len(args.domains))
+    for i, (name, alias) in enumerate(executor.map(lambda x: get_alias(x, args.alias_nameserver), args.domains)):
+        print('#    {} -> {}'.format(name, alias))
+        if not i:
+            challenge_nameserver = args.challenge_nameserver or get_nameserver(alias)
+        cmd.extend((
+            '-d', name,
+            '--domain-alias', alias,
+        ))
 
 
-env = os.environ.copy()
-env['NSUPDATE_SERVER'] = challenge_nameserver
-env['NSUPDATE_KEY'] = keypath = os.path.join(os.path.expanduser('~/nsupdate'), challenge_nameserver + '.key')
-print("$ NSUPDATE_SERVER={}".format(challenge_nameserver))
-print("$ NSUPDATE_KEY={}".format(keypath))
+    env = os.environ.copy()
+    env['LE_WORKING_DIR'] = paths.acme_data
+    env['NSUPDATE_SERVER'] = challenge_nameserver
+    env['NSUPDATE_KEY'] = keypath = os.path.join(paths.nsupdate_keys, challenge_nameserver + '.key')
+    if not os.path.exists(keypath):
+        print("Please create nsupdate key file at:", keypath)
+        exit(1)
+
+    print("$ NSUPDATE_SERVER={}".format(challenge_nameserver))
+    print("$ NSUPDATE_KEY={}".format(keypath))
 
 
-if args.verbose:
-    cmd.append('--log')
-if args.debug:
-    cmd.append('--debug')
-if args.force:
-    cmd.append('--force')
-if args.staging:
-    cmd.extend(('--server', 'https://acme-staging-v02.api.letsencrypt.org/directory'))
+    if args.verbose:
+        cmd.append('--log')
+    if args.debug:
+        cmd.append('--debug')
+    if args.force:
+        cmd.append('--force')
+    if args.staging:
+        cmd.extend(('--server', 'https://acme-staging-v02.api.letsencrypt.org/directory'))
 
-if args.extra:
-    cmd.extend(shlex.split(args.extra))
+    if args.extra:
+        cmd.extend(shlex.split(args.extra))
 
-print('$', ' '.join(('\\\n    ' if x.startswith('-') else '') + x for x in cmd))
+    print('$', ' '.join(('\\\n    ' if x.startswith('-') else '') + x for x in cmd))
 
-if not args.dry_run:
-    code = subprocess.call(cmd, env=env)
-    exit(code)
+    if not args.dry_run:
+        code = subprocess.call(cmd, env=env)
+        exit(code)
 
