@@ -9,6 +9,10 @@ useradd --system -m -d /var/lib/letsencrypt -s /bin/bash letsencrypt
 su letsencrypt
 cd
 
+# Install acme.sh
+curl https://get.acme.sh | sh -s email=my@example.com
+
+# Install acme-dns-proxy
 mkdir dev
 git clone git@github.com:mikeboers/acme-dns-proxy dev/acme-dns-proxy
 cd dev/acme-dns-proxy
